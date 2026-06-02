@@ -106,13 +106,9 @@ def main():
             except:
                 pass
             
-            # -----------------------------------------------------------------
-            # NOVA ESTRATÉGIA DE CLIQUE NO BOTÃO CONFIRMAR (COM FALLBACKS)
-            # -----------------------------------------------------------------
             print("[ETAPA 3] Iniciando busca pelo botão de confirmação...")
             confirm_btn = None
             
-            # Tentativa 1: Usando o XPATH baseado no elemento pai do formulário
             xpath_parent_btn = 'xpath=//div[@data-for="exception_reason"]/parent::div//button'
             try:
                 print(f"[ETAPA 3] [Tentativa 1] Buscando botão via XPath estrutural: {xpath_parent_btn}")
@@ -123,7 +119,6 @@ def main():
                 print("[ETAPA 3] [Tentativa 1 Falhou] Botão não encontrado por XPath estrutural dentro do tempo.")
                 confirm_btn = None
 
-            # Tentativa 2: Se o XPath falhar, busca diretamente pelo texto escrito no botão
             if confirm_btn is None:
                 text_selector = 'button:has-text("Confirm"), button:has-text("Confirmar")'
                 try:
@@ -135,35 +130,59 @@ def main():
                     print("[ETAPA 3] [Tentativa 2 Falhou] Botão não encontrado pelo texto.")
                     confirm_btn = None
 
-            # Validação Final e Clique
             if confirm_btn is not None:
                 print("[ETAPA 3] Aguardando 1.5 segundos para estabilização antes do clique...")
                 page.wait_for_timeout(1500)
                 print("[ETAPA 3] Executando o clique no botão de confirmação...")
                 confirm_btn.click()
             else:
-                # Se ambos falharem, joga um erro explícito para acionar o screenshot de diagnóstico
                 raise Exception("Não foi possível localizar o botão Confirmar por nenhum dos métodos (XPath ou Texto).")
             
-            # Aguardar mudança de link nativa do sistema
             print("[ETAPA 3] Aguardando a URL mudar para o modo operacional (?tabName=dailyOperationOverview)...")
             page.wait_for_url("**/batchInbound?tabName=dailyOperationOverview", timeout=20000)
             print("[ETAPA 3] URL alterada com sucesso! A tela operacional foi carregada.")
             
             # ====================================================================
-            # 4. Início do loop de BRs
+            # 4. Início do loop de BRs (Mecanismo Flexível de Entrada)
             # ====================================================================
             print("[ETAPA 4] Buscando o campo de inputs (SPX Tracking Number)...")
-            br_input_selector = 'div[data-for="shipment_id"] input[placeholder="Please Input"]'
             
-            page.wait_for_selector(br_input_selector, timeout=25000)
-            print("[ETAPA 4] Campo de bips encontrado com sucesso!")
+            # Definição dos caminhos com base no seu feedback
+            xpath_absoluto_conteiner = 'xpath=/html/body/div[1]/div/div[2]/div[2]/div/div[1]/form/div[2]/div/div[1]'
+            xpath_absoluto_input = 'xpath=/html/body/div[1]/div/div[2]/div[2]/div/div[1]/form/div[2]/div/div[1]//input'
+            fallback_placeholder = 'input[placeholder="Please Input"]'
+            
+            br_input_selector = None
+            
+            try:
+                print(f"[ETAPA 4] [Tentativa 1] Aguardando o XPath absoluto fornecido: {xpath_absoluto_conteiner}")
+                # Valida se o elemento principal ou um input dentro dele está ativo
+                page.wait_for_selector(xpath_absoluto_conteiner, timeout=10000) # Limite de 10 segundos
+                
+                # Checa se existe uma tag <input> dentro desse caminho absoluto para focar diretamente
+                if page.locator(xpath_absoluto_input).count() > 0:
+                    br_input_selector = xpath_absoluto_input
+                    print("[ETAPA 4] Alvo definido: Input específico localizado dentro do XPath absoluto.")
+                else:
+                    br_input_selector = xpath_absoluto_conteiner
+                    print("[ETAPA 4] Alvo definido: Próprio nó do XPath absoluto.")
+                    
+            except Exception:
+                print("[ETAPA 4] [Tentativa 1 Falhou] Não localizou o XPath absoluto em 10s. Acionando Fallback...")
+                try:
+                    print(f"[ETAPA 4] [Tentativa 2 - Fallback] Caçando campo pelo placeholder: {fallback_placeholder}")
+                    page.wait_for_selector(fallback_placeholder, timeout=15000)
+                    br_input_selector = fallback_placeholder
+                    print("[ETAPA 4] Alvo definido: Campo localizado via texto 'Please Input'.")
+                except Exception as e_fallback:
+                    raise Exception(f"Ambos os métodos de busca do campo de bips falharam. Erro original: {e_fallback}")
 
             print("[ETAPA 4] Lendo dados da planilha...")
             all_values = sheet.get_all_values()
             total_linhas = len(all_values) - 1
             print(f"[ETAPA 4] {total_linhas} linhas mapeadas na planilha. Iniciando processamento...")
 
+            # Execução do processamento linha por linha
             for index in range(1, len(all_values)):
                 row = all_values[index]
                 br_number = row[0].strip()
@@ -172,13 +191,28 @@ def main():
                 if br_number.startswith("BR") and status != "OK":
                     try:
                         print(f"  -> Bipando pacote: {br_number}...")
+                        
+                        # Clica e foca no seletor definido
                         page.click(br_input_selector)
-                        page.fill(br_input_selector, "") 
-                        page.fill(br_input_selector, br_number)
+                        
+                        # Se o seletor aceitar o comando fill (for input), limpa e preenche. 
+                        # Caso seja uma div container, limpamos usando teclado e digitamos
+                        try:
+                            page.fill(br_input_selector, "")
+                            page.fill(br_input_selector, br_number)
+                        except Exception:
+                            # Fallback de digitação por teclado puro caso o seletor seja um wrapper element
+                            page.keyboard.press("Control+A")
+                            page.keyboard.press("Backspace")
+                            page.keyboard.type(br_number)
+                            
+                        # Pressiona o Enter para confirmar a colagem do BR individual
                         page.keyboard.press("Enter")
                         
+                        # Delay operacional padrão para gravação do sistema interno
                         page.wait_for_timeout(1500) 
                         
+                        # Escreve o OK na planilha de controle
                         sheet.update_cell(index + 1, 2, "OK")
                         print(f"  -> [SUCESSO] {br_number} processado e gravado na planilha.")
                         
