@@ -30,7 +30,8 @@ except Exception as e:
 # ==========================================
 # FUNÇÕES DO ROBÔ
 # ==========================================
-TARGET_URL = "https://spx.shopee.com.br/#/exceptionHandlingArea/batchInbound?tabName=dailyOperationOverview"
+# Mudamos para a URL inicial limpa para respeitar o fluxo do sistema
+TARGET_URL = "https://spx.shopee.com.br/#/exceptionHandlingArea/batchInbound"
 
 def login(page):
     print("[ETAPA 1] Acessando a página de login do SPX...")
@@ -68,15 +69,15 @@ def main():
             # 1. Faz o Login
             login(page)
             
-            # 2. Navega para a página de EHA Batch Inbound
-            print(f"[ETAPA 2] Navegando diretamente para a URL do Batch Inbound: {TARGET_URL}")
+            # 2. Navega para a página de EHA Batch Inbound Inicial
+            print(f"[ETAPA 2] Navegando para a URL inicial do Batch Inbound: {TARGET_URL}")
             page.goto(TARGET_URL, wait_until="networkidle")
             
             print("[ETAPA 2] Aguardando 10 segundos para a renderização inicial da página...")
             page.wait_for_timeout(10000)
             
             # ====================================================================
-            # 3. Configurar Exception Reason (REFINADO PARA EVITAR BOTOES DESABILITADOS)
+            # 3. Configurar Exception Reason
             # ====================================================================
             print("[ETAPA 3] Buscando a caixa externa do 'Exception Reason'...")
             reason_box_selector = 'div[data-for="exception_reason"] .ssc-select'
@@ -96,7 +97,7 @@ def main():
             page.keyboard.press("Enter")
             page.wait_for_timeout(1500)
             
-            # Garantia extra: Tenta também clicar no texto caso o framework exija evento de ponteiro
+            # Garantia por texto flutuante
             opcao_texto = "Erro operacional (pacote sem necessidade de tratativa)"
             try:
                 if page.locator(f'text="{opcao_texto}"').is_visible():
@@ -104,34 +105,29 @@ def main():
                     page.click(f'text="{opcao_texto}"')
                     page.wait_for_timeout(1000)
             except:
-                print("[ETAPA 3] [Info] Não foi necessário forçar o clique manual no texto.")
+                pass
             
-            print("[ETAPA 3] Analisando o estado do botão de Confirmação...")
-            confirm_btn = page.locator('button:has-text("Confirm"), button:has-text("Confirmar")').first
+            print("[ETAPA 3] Buscando o botão de Confirmação ao lado do campo...")
+            confirm_btn = page.locator('div[data-for="exception_reason"] ~ button').first
             confirm_btn.wait_for(state="visible", timeout=15000)
             
-            # Valida as classes do HTML para ver se o botão ainda possui o 'disabled' injetado pela Shopee
-            classes_botao = confirm_btn.get_attribute("class") or ""
-            print(f"[ETAPA 3] Classes atuais do botão: '{classes_botao}'")
-            
-            if "disabled" in classes_botao:
-                print("[ALERTA] O botão ainda consta como desabilitado no sistema. Tentando dar um Enter geral para destravar...")
-                page.keyboard.press("Enter")
-                page.wait_for_timeout(1500)
+            print("[ETAPA 3] Aguardando 1.5 segundos para estabilização da interface...")
+            page.wait_for_timeout(1500)
             
             print("[ETAPA 3] Executando o clique no botão Confirmar...")
-            confirm_btn.click(force=True)
+            confirm_btn.click()
             
-            print("[ETAPA 3] Clique efetuado. Aguardando 5 segundos para a abertura dos campos de bips...")
-            page.wait_for_timeout(5000)
+            # AGUARDAR MUDANÇA DE LINK NATAL DO SISTEMA
+            print("[ETAPA 3] Aguardando a URL mudar para o modo operacional (?tabName=dailyOperationOverview)...")
+            page.wait_for_url("**/batchInbound?tabName=dailyOperationOverview", timeout=20000)
+            print("[ETAPA 3] URL alterada com sucesso! A tela operacional foi carregada.")
             
             # ====================================================================
             # 4. Início do loop de BRs
             # ====================================================================
-            print("[ETAPA 4] Verificando se a seção inferior carregou e buscando o campo de inputs (SPX Tracking Number)...")
+            print("[ETAPA 4] Buscando o campo de inputs (SPX Tracking Number)...")
             br_input_selector = 'div[data-for="shipment_id"] input[placeholder="Please Input"]'
             
-            # Se falhar aqui, o log nos dirá exatamente o estado da página atual
             page.wait_for_selector(br_input_selector, timeout=25000)
             print("[ETAPA 4] Campo de bips encontrado com sucesso!")
 
@@ -153,7 +149,6 @@ def main():
                         page.fill(br_input_selector, br_number)
                         page.keyboard.press("Enter")
                         
-                        # Delay de segurança para o processamento de cada pacote na tabela inferior
                         page.wait_for_timeout(1500) 
                         
                         sheet.update_cell(index + 1, 2, "OK")
@@ -167,6 +162,11 @@ def main():
             print(f"[ERRO FATAL] O robô travou. Detalhes do erro:")
             print(str(e))
             print("==================================================")
+            try:
+                page.screenshot(path="erro_timeout.png")
+                print("[SISTEMA] Evidência visual salva como 'erro_timeout.png'.")
+            except Exception as error_screen:
+                print(f"[SISTEMA] Não foi possível tirar o screenshot: {error_screen}")
             
         finally:
             print("[SISTEMA] Encerrando o navegador e limpando processos.")
