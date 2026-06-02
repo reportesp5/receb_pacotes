@@ -72,54 +72,73 @@ def main():
             print(f"[ETAPA 2] Navegando diretamente para a URL do Batch Inbound: {TARGET_URL}")
             page.goto(TARGET_URL, wait_until="networkidle")
             
-            print("[ETAPA 2] Aguardando 10 segundos para a renderização da página...")
+            print("[ETAPA 2] Aguardando 10 segundos para a renderização inicial da página...")
             page.wait_for_timeout(10000)
             
             # ====================================================================
-            # 3. Configurar Exception Reason (NOVA LÓGICA BASEADA NAS IMAGENS)
+            # 3. Configurar Exception Reason (REFINADO PARA EVITAR BOTOES DESABILITADOS)
             # ====================================================================
             print("[ETAPA 3] Buscando a caixa externa do 'Exception Reason'...")
             reason_box_selector = 'div[data-for="exception_reason"] .ssc-select'
-            
-            print("[ETAPA 3] Aguardando a caixa ficar visível...")
             page.wait_for_selector(reason_box_selector, timeout=20000)
             
-            print("[ETAPA 3] Clicando na caixa para focar no campo e abrir a lista...")
+            print("[ETAPA 3] Clicando na caixa para abrir as opções...")
             page.click(reason_box_selector)
-            page.wait_for_timeout(1000) # Pausa para a animação do dropdown abrir
+            page.wait_for_timeout(1500) 
             
-            print("[ETAPA 3] Simulando o teclado digitando 'erro'...")
-            page.keyboard.type("erro")
+            print("[ETAPA 3] Digitando 'Erro operacional' para filtrar a lista...")
+            page.keyboard.type("Erro operacional")
+            page.wait_for_timeout(2000) 
             
+            print("[ETAPA 3] Selecionando a opção via comandos de teclado (Seta para Baixo + Enter)...")
+            page.keyboard.press("ArrowDown")
+            page.wait_for_timeout(500)
+            page.keyboard.press("Enter")
+            page.wait_for_timeout(1500)
+            
+            # Garantia extra: Tenta também clicar no texto caso o framework exija evento de ponteiro
             opcao_texto = "Erro operacional (pacote sem necessidade de tratativa)"
-            print(f"[ETAPA 3] Aguardando a opção exata aparecer na tela: '{opcao_texto}'...")
+            try:
+                if page.locator(f'text="{opcao_texto}"').is_visible():
+                    print("[ETAPA 3] [Garantia] Texto da opção detectado. Forçando clique direto...")
+                    page.click(f'text="{opcao_texto}"')
+                    page.wait_for_timeout(1000)
+            except:
+                print("[ETAPA 3] [Info] Não foi necessário forçar o clique manual no texto.")
             
-            # O Playwright vai procurar exatamente por esse texto flutuando na tela
-            page.wait_for_selector(f'text="{opcao_texto}"', state="visible", timeout=15000)
-            
-            print("[ETAPA 3] Opção encontrada! Clicando nela...")
-            page.click(f'text="{opcao_texto}"')
-            page.wait_for_timeout(1000)
-            
-            print("[ETAPA 3] Buscando o botão de 'Confirm' ou 'Confirmar'...")
+            print("[ETAPA 3] Analisando o estado do botão de Confirmação...")
             confirm_btn = page.locator('button:has-text("Confirm"), button:has-text("Confirmar")').first
             confirm_btn.wait_for(state="visible", timeout=15000)
             
-            print("[ETAPA 3] Clicando em Confirmar...")
-            confirm_btn.click()
-            page.wait_for_timeout(2000)
+            # Valida as classes do HTML para ver se o botão ainda possui o 'disabled' injetado pela Shopee
+            classes_botao = confirm_btn.get_attribute("class") or ""
+            print(f"[ETAPA 3] Classes atuais do botão: '{classes_botao}'")
+            
+            if "disabled" in classes_botao:
+                print("[ALERTA] O botão ainda consta como desabilitado no sistema. Tentando dar um Enter geral para destravar...")
+                page.keyboard.press("Enter")
+                page.wait_for_timeout(1500)
+            
+            print("[ETAPA 3] Executando o clique no botão Confirmar...")
+            confirm_btn.click(force=True)
+            
+            print("[ETAPA 3] Clique efetuado. Aguardando 5 segundos para a abertura dos campos de bips...")
+            page.wait_for_timeout(5000)
             
             # ====================================================================
             # 4. Início do loop de BRs
             # ====================================================================
-            print("[ETAPA 4] Buscando o campo de input dos pacotes (SPX Tracking Number)...")
+            print("[ETAPA 4] Verificando se a seção inferior carregou e buscando o campo de inputs (SPX Tracking Number)...")
             br_input_selector = 'div[data-for="shipment_id"] input[placeholder="Please Input"]'
-            page.wait_for_selector(br_input_selector, timeout=20000)
+            
+            # Se falhar aqui, o log nos dirá exatamente o estado da página atual
+            page.wait_for_selector(br_input_selector, timeout=25000)
+            print("[ETAPA 4] Campo de bips encontrado com sucesso!")
 
             print("[ETAPA 4] Lendo dados da planilha...")
             all_values = sheet.get_all_values()
             total_linhas = len(all_values) - 1
-            print(f"[ETAPA 4] {total_linhas} linhas encontradas. Iniciando os bips...")
+            print(f"[ETAPA 4] {total_linhas} linhas mapeadas na planilha. Iniciando processamento...")
 
             for index in range(1, len(all_values)):
                 row = all_values[index]
@@ -128,17 +147,17 @@ def main():
 
                 if br_number.startswith("BR") and status != "OK":
                     try:
-                        print(f"  -> Processando pacote: {br_number}...")
+                        print(f"  -> Bipando pacote: {br_number}...")
                         page.click(br_input_selector)
                         page.fill(br_input_selector, "") 
                         page.fill(br_input_selector, br_number)
                         page.keyboard.press("Enter")
                         
-                        # Tempo de espera para o sistema validar o pacote na tabela abaixo
+                        # Delay de segurança para o processamento de cada pacote na tabela inferior
                         page.wait_for_timeout(1500) 
                         
                         sheet.update_cell(index + 1, 2, "OK")
-                        print(f"  -> [SUCESSO] {br_number} confirmado e planilha atualizada.")
+                        print(f"  -> [SUCESSO] {br_number} processado e gravado na planilha.")
                         
                     except Exception as e:
                         print(f"  -> [ERRO] Falha ao processar o pacote {br_number}: {e}")
