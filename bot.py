@@ -46,7 +46,7 @@ def login(page):
     print("[ETAPA 1] Clicando no botão de Login...")
     page.click('xpath=/html/body/div[1]/div/div[2]/div/div/div[1]/div[3]/form/div/div/button')
     
-    print("[ETAPA 1] Aguardando 15 segundos para o processamento do login e carregamento da dashboard inicial...")
+    print("[ETAPA 1] Aguardando 15 segundos para o processamento do login...")
     page.wait_for_timeout(15000) 
     
     try:
@@ -72,26 +72,33 @@ def main():
             print(f"[ETAPA 2] Navegando diretamente para a URL do Batch Inbound: {TARGET_URL}")
             page.goto(TARGET_URL, wait_until="networkidle")
             
-            print("[ETAPA 2] Aguardando 10 segundos para garantir a renderização de todos os elementos dinâmicos da página...")
+            print("[ETAPA 2] Aguardando 10 segundos para a renderização da página...")
             page.wait_for_timeout(10000)
             
-            # 3. Configurar Exception Reason e Confirmar
-            print("[ETAPA 3] Buscando o campo 'Exception Reason'...")
-            # Atualizado para o seletor exato da sua imagem no DevTools para evitar falsos positivos
-            reason_input = 'div[data-for="exception_reason"] input[placeholder="Please Select"]'
+            # ====================================================================
+            # 3. Configurar Exception Reason (NOVA LÓGICA BASEADA NAS IMAGENS)
+            # ====================================================================
+            print("[ETAPA 3] Buscando a caixa externa do 'Exception Reason'...")
+            reason_box_selector = 'div[data-for="exception_reason"] .ssc-select'
             
-            print(f"[ETAPA 3] Aguardando a visibilidade do seletor: {reason_input}")
-            page.wait_for_selector(reason_input, timeout=30000) # Aumentado para 30 segundos
+            print("[ETAPA 3] Aguardando a caixa ficar visível...")
+            page.wait_for_selector(reason_box_selector, timeout=20000)
             
-            print("[ETAPA 3] Campo encontrado. Clicando e preenchendo o motivo...")
-            page.click(reason_input)
-            page.fill(reason_input, "Erro operacional (pacote sem necessidade de tratativa)")
+            print("[ETAPA 3] Clicando na caixa para focar no campo e abrir a lista...")
+            page.click(reason_box_selector)
+            page.wait_for_timeout(1000) # Pausa para a animação do dropdown abrir
             
-            print("[ETAPA 3] Aguardando 2 segundos para o sistema carregar o menu suspenso (dropdown)...")
-            page.wait_for_timeout(2000) 
+            print("[ETAPA 3] Simulando o teclado digitando 'erro'...")
+            page.keyboard.type("erro")
             
-            print("[ETAPA 3] Pressionando 'Enter' para selecionar a opção no menu suspenso...")
-            page.keyboard.press("Enter")
+            opcao_texto = "Erro operacional (pacote sem necessidade de tratativa)"
+            print(f"[ETAPA 3] Aguardando a opção exata aparecer na tela: '{opcao_texto}'...")
+            
+            # O Playwright vai procurar exatamente por esse texto flutuando na tela
+            page.wait_for_selector(f'text="{opcao_texto}"', state="visible", timeout=15000)
+            
+            print("[ETAPA 3] Opção encontrada! Clicando nela...")
+            page.click(f'text="{opcao_texto}"')
             page.wait_for_timeout(1000)
             
             print("[ETAPA 3] Buscando o botão de 'Confirm' ou 'Confirmar'...")
@@ -100,11 +107,11 @@ def main():
             
             print("[ETAPA 3] Clicando em Confirmar...")
             confirm_btn.click()
-            
-            print("[ETAPA 3] Aguardando 2 segundos após a confirmação...")
             page.wait_for_timeout(2000)
             
+            # ====================================================================
             # 4. Início do loop de BRs
+            # ====================================================================
             print("[ETAPA 4] Buscando o campo de input dos pacotes (SPX Tracking Number)...")
             br_input_selector = 'div[data-for="shipment_id"] input[placeholder="Please Input"]'
             page.wait_for_selector(br_input_selector, timeout=20000)
@@ -112,7 +119,7 @@ def main():
             print("[ETAPA 4] Lendo dados da planilha...")
             all_values = sheet.get_all_values()
             total_linhas = len(all_values) - 1
-            print(f"[ETAPA 4] {total_linhas} linhas encontradas (ignorando cabeçalho). Iniciando os bips...")
+            print(f"[ETAPA 4] {total_linhas} linhas encontradas. Iniciando os bips...")
 
             for index in range(1, len(all_values)):
                 row = all_values[index]
