@@ -30,7 +30,6 @@ except Exception as e:
 # ==========================================
 # FUNÇÕES DO ROBÔ
 # ==========================================
-# Mudamos para a URL inicial limpa para respeitar o fluxo do sistema
 TARGET_URL = "https://spx.shopee.com.br/#/exceptionHandlingArea/batchInbound"
 
 def login(page):
@@ -107,17 +106,46 @@ def main():
             except:
                 pass
             
-            print("[ETAPA 3] Buscando o botão de Confirmação ao lado do campo...")
-            confirm_btn = page.locator('div[data-for="exception_reason"] ~ button').first
-            confirm_btn.wait_for(state="visible", timeout=15000)
+            # -----------------------------------------------------------------
+            # NOVA ESTRATÉGIA DE CLIQUE NO BOTÃO CONFIRMAR (COM FALLBACKS)
+            # -----------------------------------------------------------------
+            print("[ETAPA 3] Iniciando busca pelo botão de confirmação...")
+            confirm_btn = None
             
-            print("[ETAPA 3] Aguardando 1.5 segundos para estabilização da interface...")
-            page.wait_for_timeout(1500)
+            # Tentativa 1: Usando o XPATH baseado no elemento pai do formulário
+            xpath_parent_btn = 'xpath=//div[@data-for="exception_reason"]/parent::div//button'
+            try:
+                print(f"[ETAPA 3] [Tentativa 1] Buscando botão via XPath estrutural: {xpath_parent_btn}")
+                confirm_btn = page.locator(xpath_parent_btn).first
+                confirm_btn.wait_for(state="visible", timeout=7000)
+                print("[ETAPA 3] Botão localizado via XPath com sucesso.")
+            except Exception:
+                print("[ETAPA 3] [Tentativa 1 Falhou] Botão não encontrado por XPath estrutural dentro do tempo.")
+                confirm_btn = None
+
+            # Tentativa 2: Se o XPath falhar, busca diretamente pelo texto escrito no botão
+            if confirm_btn is None:
+                text_selector = 'button:has-text("Confirm"), button:has-text("Confirmar")'
+                try:
+                    print(f"[ETAPA 3] [Tentativa 2] Buscando botão de forma genérica pelo texto escrito: {text_selector}")
+                    confirm_btn = page.locator(text_selector).first
+                    confirm_btn.wait_for(state="visible", timeout=7000)
+                    print("[ETAPA 3] Botão localizado através do texto escrito.")
+                except Exception:
+                    print("[ETAPA 3] [Tentativa 2 Falhou] Botão não encontrado pelo texto.")
+                    confirm_btn = None
+
+            # Validação Final e Clique
+            if confirm_btn is not None:
+                print("[ETAPA 3] Aguardando 1.5 segundos para estabilização antes do clique...")
+                page.wait_for_timeout(1500)
+                print("[ETAPA 3] Executando o clique no botão de confirmação...")
+                confirm_btn.click()
+            else:
+                # Se ambos falharem, joga um erro explícito para acionar o screenshot de diagnóstico
+                raise Exception("Não foi possível localizar o botão Confirmar por nenhum dos métodos (XPath ou Texto).")
             
-            print("[ETAPA 3] Executando o clique no botão Confirmar...")
-            confirm_btn.click()
-            
-            # AGUARDAR MUDANÇA DE LINK NATAL DO SISTEMA
+            # Aguardar mudança de link nativa do sistema
             print("[ETAPA 3] Aguardando a URL mudar para o modo operacional (?tabName=dailyOperationOverview)...")
             page.wait_for_url("**/batchInbound?tabName=dailyOperationOverview", timeout=20000)
             print("[ETAPA 3] URL alterada com sucesso! A tela operacional foi carregada.")
