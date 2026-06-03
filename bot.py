@@ -130,11 +130,9 @@ def main():
                         
                         is_nova_tela = False
                         try:
-                            # Aguarda no máximo 3.5 segundos para ver se o pop-up abre
                             page.wait_for_selector(xpath_popup_container, timeout=3500)
                             is_nova_tela = True
                         except Exception:
-                            # Checagem extra rápida pelo placeholder
                             if page.locator(fallback_popup_placeholder).is_visible():
                                 is_nova_tela = True
 
@@ -142,7 +140,6 @@ def main():
                         if is_nova_tela:
                             print("  -> [DETECTOR] Nova tela detectada. Localizando o campo do pop-up...")
                             
-                            # Define o seletor exato para o campo interno do pop-up
                             if page.locator(xpath_popup_input).count() > 0:
                                 popup_field = xpath_popup_input
                             elif page.locator(xpath_popup_container).count() > 0:
@@ -172,18 +169,20 @@ def main():
                         print("  -> Clicando em 'Offline Resolve'...")
                         resolve_btn.click()
                         
-                        # --- ETAPA FINAL: BOTÃO CONFIRMAR LARANJA ---
+                        # --- ETAPA FINAL: BOTÃO CONFIRMAR LARANJA (CORRIGIDO COM :VISIBLE) ---
                         print("  -> Aguardando o pop-up de confirmação final...")
-                        seletor_botao_laranja = 'button.ssc-btn-type-primary:has-text("Confirm"), button.ssc-btn-type-primary:has-text("Confirmar")'
                         
-                        orange_confirm_btn = page.locator(seletor_botao_laranja).last
+                        # Adicionado ':visible' para forçar o Playwright a olhar apenas o botão ativo na tela
+                        seletor_botao_laranja = 'button.ssc-btn-type-primary:visible'
+                        
+                        orange_confirm_btn = page.locator(seletor_botao_laranja).first
                         orange_confirm_btn.wait_for(state="visible", timeout=10000)
                         
                         page.wait_for_timeout(500)
                         print("  -> Clicando no botão Confirmar Laranja...")
                         orange_confirm_btn.click()
                         
-                        # --- ETAPA DE GRAVAÇÃO ---
+                        # --- ETAPA DE GRAVAÇÃO DE SUCESSO ---
                         print("  -> Aguardando registro do sistema...")
                         page.wait_for_timeout(2000)
                         
@@ -193,6 +192,9 @@ def main():
                     except Exception as e:
                         print(f"❌ [ERRO] Falha no processamento do pacote {br_number}: {e}")
                         try:
+                            sheet.update_cell(index + 1, 2, "ERRO")
+                            print(f"⚠️ [AVISO] 'ERRO' gravado na planilha para o pacote {br_number}.")
+                            
                             page.screenshot(path=f"erro_{br_number}.png")
                             print("  -> Recarregando a página para limpar travas e continuar com o próximo...")
                             page.reload(wait_until="networkidle")
