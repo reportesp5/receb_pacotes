@@ -148,25 +148,35 @@ def main():
                         # --------------------------------------------------
                         passo_atual = "Busca e clique no botão 'Offline Resolve'"
                         # --------------------------------------------------
-                        print("  -> Localizando o botão 'Offline Resolve' na tabela...")
-                        resolve_btn = page.locator('.execute-btn button').first
+                        # Tempo extra para garantir que a tabela superior recarregou após o Enter
+                        page.wait_for_timeout(1500) 
+                        
+                        print("  -> Localizando o botão 'Offline Resolve' pelo texto...")
+                        # Voltamos para a busca por texto universal, que é mais segura
+                        resolve_btn = page.locator('text="Offline Resolve"').first
                         resolve_btn.wait_for(state="visible", timeout=10000)
                         
-                        page.wait_for_timeout(1000)
+                        print("  -> Efetuando o clique em 'Offline Resolve'...")
                         resolve_btn.click()
                         
                         # --------------------------------------------------
                         passo_atual = "Confirmação no botão Laranja do Pop-up"
                         # --------------------------------------------------
-                        print("  -> Aguardando a janela de confirmação final (Pop-up)...")
-                        
-                        # CORREÇÃO DA ETAPA: Busca baseada estritamente no TEXTO conforme orientou
+                        print("  -> Aguardando a janela de confirmação final (Pop-up laranja)...")
                         seletor_botao_laranja = 'button:has-text("Confirm"):visible, button:has-text("Confirmar"):visible'
-                        
                         orange_confirm_btn = page.locator(seletor_botao_laranja).first
-                        orange_confirm_btn.wait_for(state="visible", timeout=10000)
+                        
+                        try:
+                            # Tenta aguardar o popup abrir
+                            orange_confirm_btn.wait_for(state="visible", timeout=4000)
+                        except:
+                            # LÓGICA DE RECUO (RETRY): Se o pop-up não abriu, força o clique no botão novamente
+                            print("  -> [AVISO] O pop-up não abriu de primeira. Forçando um segundo clique em 'Offline Resolve'...")
+                            resolve_btn.click(force=True)
+                            orange_confirm_btn.wait_for(state="visible", timeout=6000)
                         
                         page.wait_for_timeout(500)
+                        print("  -> Clicando no botão Confirmar Laranja...")
                         orange_confirm_btn.click()
                         
                         # --------------------------------------------------
