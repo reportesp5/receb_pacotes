@@ -30,7 +30,6 @@ except Exception as e:
 # ==========================================
 # FUNÇÕES DO ROBÔ
 # ==========================================
-# NOVA URL: Direto para a Área de Tratativas (Single Inbound)
 TARGET_URL = "https://spx.shopee.com.br/#/exceptionHandlingArea/singleInbound"
 
 def login(page):
@@ -76,45 +75,30 @@ def main():
             print("[ETAPA 2] Aguardando 10 segundos para a renderização inicial da página...")
             page.wait_for_timeout(10000)
             
-            # ====================================================================
-            # 3. Definir o Campo de Input dos BRs
-            # ====================================================================
-            print("[ETAPA 3] Buscando o campo de input dos pacotes...")
-            
-            # XPaths atualizados para a tela do Single Inbound
+            # 3. Definir o Campo de Input Principal dos BRs
+            print("[ETAPA 3] Buscando o campo de input principal dos pacotes...")
             xpath_absoluto_conteiner = 'xpath=/html/body/div/div/div[2]/div[2]/div/div[1]/form/div/div/div[1]/div[1]/div'
             xpath_absoluto_input = xpath_absoluto_conteiner + '//input'
             fallback_selector = 'input[placeholder="Input"], input[placeholder="Inserir"]'
             
             br_input_selector = None
-            
             try:
-                print(f"[ETAPA 3] [Tentativa 1] Buscando via XPath absoluto...")
                 page.wait_for_selector(xpath_absoluto_conteiner, timeout=10000) 
-                
                 if page.locator(xpath_absoluto_input).count() > 0:
                     br_input_selector = xpath_absoluto_input
-                    print("[ETAPA 3] Alvo definido: Input dentro do XPath absoluto.")
                 else:
                     br_input_selector = xpath_absoluto_conteiner
-                    print("[ETAPA 3] Alvo definido: Container do XPath absoluto.")
-                    
+                print("[ETAPA 3] Campo de bipe principal configurado.")
             except Exception:
-                print("[ETAPA 3] [Tentativa 1 Falhou] Acionando busca por palavras (Input/Inserir)...")
-                try:
-                    page.wait_for_selector(fallback_selector, timeout=10000)
-                    br_input_selector = fallback_selector
-                    print("[ETAPA 3] Alvo definido: Campo localizado via placeholder.")
-                except Exception as e_fallback:
-                    raise Exception(f"Não foi possível encontrar o campo de bipe. Erro: {e_fallback}")
+                page.wait_for_selector(fallback_selector, timeout=10000)
+                br_input_selector = fallback_selector
+                print("[ETAPA 3] Campo de bipe principal configurado via fallback.")
 
-            # ====================================================================
-            # 4. Início do loop de Tratativas (Bipar -> Offline Resolve -> Confirm)
-            # ====================================================================
+            # 4. Início do loop de processamento
             print("[ETAPA 4] Lendo dados da planilha...")
             all_values = sheet.get_all_values()
             total_linhas = len(all_values) - 1
-            print(f"[ETAPA 4] {total_linhas} linhas mapeadas. Iniciando processamento...")
+            print(f"[ETAPA 4] {total_linhas} linhas mapeadas. Iniciando os bips...")
 
             for index in range(1, len(all_values)):
                 row = all_values[index]
@@ -124,9 +108,9 @@ def main():
                 if br_number.startswith("BR") and status != "OK":
                     try:
                         print(f"\n==============================================")
-                        print(f"📦 Bipando pacote: {br_number}")
+                        print(f"📦 Processando pacote: {br_number}")
                         
-                        # 4.1. Clica, preenche e dá Enter
+                        # 4.1. Foca, preenche o BR e dá Enter
                         page.click(br_input_selector)
                         try:
                             page.fill(br_input_selector, "")
@@ -137,61 +121,96 @@ def main():
                             page.keyboard.type(br_number)
                             
                         page.keyboard.press("Enter")
-                        print("  -> Enter pressionado. Aguardando a tabela atualizar...")
+                        print("  -> BR inserido. Verificando se a nova tela (pop-up) vai aparecer...")
                         
-                        # 4.2. Espera o botão "Offline Resolve" aparecer e clica
-                        # Pega o primeiro (que é o correspondente ao pacote recém bipado no topo da lista)
+                        # 4.2. Detector da Nova Tela (Pop-up do número 26)
+                        xpath_popup_container = 'xpath=/html/body/div/div/div[2]/div[2]/div/div[4]/div/div[2]/div/div[2]/div[1]/div[1]/form/div/div/span/span/div'
+                        xpath_popup_input = xpath_popup_container + '//input'
+                        fallback_popup_placeholder = 'input[placeholder="Please Input"], input[placeholder="Por favor, insira"]'
+                        
+                        is_nova_tela = False
+                        try:
+                            # Aguarda no máximo 3.5 segundos para ver se o pop-up abre
+                            page.wait_for_selector(xpath_popup_container, timeout=3500)
+                            is_nova_tela = True
+                        except Exception:
+                            # Checagem extra rápida pelo placeholder
+                            if page.locator(fallback_popup_placeholder).is_visible():
+                                is_nova_tela = True
+
+                        # --- SE FOR A NOVA TELA: INSERE O NÚMERO 26 ---
+                        if is_nova_tela:
+                            print("  -> [DETECTOR] Nova tela detectada. Localizando o campo do pop-up...")
+                            
+                            # Define o seletor exato para o campo interno do pop-up
+                            if page.locator(xpath_popup_input).count() > 0:
+                                popup_field = xpath_popup_input
+                            elif page.locator(xpath_popup_container).count() > 0:
+                                popup_field = xpath_popup_container
+                            else:
+                                popup_field = fallback_popup_placeholder
+                            
+                            print("  -> Preenchendo o número 26...")
+                            page.click(popup_field)
+                            try:
+                                page.fill(popup_field, "26")
+                            except Exception:
+                                page.keyboard.type("26")
+                                
+                            page.keyboard.press("Enter")
+                            print("  -> Número 26 confirmado. Aguardando transição para a listagem operacional...")
+                            page.wait_for_timeout(2500)
+                        else:
+                            print("  -> [DETECTOR] Fluxo direto detectado (sem necessidade do pop-up 26).")
+
+                        # --- ETAPA UNIFICADA: OFFLINE RESOLVE ---
+                        print("  -> Localizando o botão 'Offline Resolve' na tabela...")
                         resolve_btn = page.locator('text="Offline Resolve"').first
                         resolve_btn.wait_for(state="visible", timeout=15000)
                         
-                        # Pausa de segurança para a linha da tabela renderizar completamente
                         page.wait_for_timeout(1000)
                         print("  -> Clicando em 'Offline Resolve'...")
                         resolve_btn.click()
                         
-                        # 4.3. Lidar com o pop-up (Botão Laranja)
-                        print("  -> Aguardando o pop-up de confirmação abrir...")
-                        
-                        # O segredo de segurança: Buscar apenas botões que tenham a classe 'ssc-btn-type-primary' (Laranja) 
-                        # E que contenham o texto Confirm ou Confirmar
+                        # --- ETAPA FINAL: BOTÃO CONFIRMAR LARANJA ---
+                        print("  -> Aguardando o pop-up de confirmação final...")
                         seletor_botao_laranja = 'button.ssc-btn-type-primary:has-text("Confirm"), button.ssc-btn-type-primary:has-text("Confirmar")'
                         
-                        # Usa o .last pois elementos de pop-up geralmente ficam no final do HTML carregado por cima de tudo
                         orange_confirm_btn = page.locator(seletor_botao_laranja).last
                         orange_confirm_btn.wait_for(state="visible", timeout=10000)
                         
-                        page.wait_for_timeout(500) # Pausa para a animação do pop-up
-                        print("  -> Botão Laranja encontrado! Clicando em Confirmar...")
+                        page.wait_for_timeout(500)
+                        print("  -> Clicando no botão Confirmar Laranja...")
                         orange_confirm_btn.click()
                         
-                        # 4.4. Finaliza a etapa e marca na planilha
-                        page.wait_for_timeout(2000) # Tempo para o sistema registrar o pacote como resolvido
+                        # --- ETAPA DE GRAVAÇÃO ---
+                        print("  -> Aguardando registro do sistema...")
+                        page.wait_for_timeout(2000)
+                        
                         sheet.update_cell(index + 1, 2, "OK")
-                        print(f"✅ [SUCESSO] Pacote resolvido e planilha atualizada.")
+                        print(f"✅ [SUCESSO] Pacote {br_number} finalizado com OK na planilha.")
                         
                     except Exception as e:
-                        print(f"❌ [ERRO] Falha na tratativa do pacote {br_number}: {e}")
+                        print(f"❌ [ERRO] Falha no processamento do pacote {br_number}: {e}")
                         try:
-                            # Se der erro, tira print específico do pacote que travou e recarrega a página
                             page.screenshot(path=f"erro_{br_number}.png")
-                            print("  -> Recarregando a página para tentar o próximo pacote de forma limpa...")
+                            print("  -> Recarregando a página para limpar travas e continuar com o próximo...")
                             page.reload(wait_until="networkidle")
                             page.wait_for_timeout(5000)
-                        except:
+                        except Exception:
                             pass
 
         except Exception as e:
             print("\n==================================================")
-            print(f"[ERRO FATAL] O robô travou. Detalhes do erro:")
-            print(str(e))
+            print(f"[ERRO FATAL] O robô sofreu uma parada abrupta: {e}")
             print("==================================================")
             try:
                 page.screenshot(path="erro_timeout.png")
-            except:
+            except Exception:
                 pass
             
         finally:
-            print("[SISTEMA] Encerrando o navegador e limpando processos.")
+            print("[SISTEMA] Encerrando o navegador e limpando instâncias secundárias.")
             browser.close()
 
 if __name__ == "__main__":
