@@ -148,30 +148,33 @@ def main():
                         # --------------------------------------------------
                         passo_atual = "Busca e clique no botão 'Offline Resolve'"
                         # --------------------------------------------------
-                        # Tempo extra para garantir que a tabela superior recarregou após o Enter
-                        page.wait_for_timeout(1500) 
+                        # Tempo extra para garantir que a tabela superior recarregou e montou o XPath após o Enter
+                        page.wait_for_timeout(2000) 
                         
-                        print("  -> Localizando o botão 'Offline Resolve' pelo texto...")
-                        # Voltamos para a busca por texto universal, que é mais segura
-                        resolve_btn = page.locator('text="Offline Resolve"').first
+                        print("  -> Localizando o botão 'Offline Resolve' via XPath Absoluto...")
+                        
+                        # O XPATH EXATO QUE VOCÊ FORNECEU
+                        xpath_offline_resolve = 'xpath=/html/body/div/div/div[2]/div[2]/div/div[2]/div/div/div[2]/div/div[1]/div[2]/div/div/div/table/tbody[2]/tr/td[10]/div/div/div/div[1]/button'
+                        
+                        resolve_btn = page.locator(xpath_offline_resolve)
                         resolve_btn.wait_for(state="visible", timeout=10000)
                         
-                        print("  -> Efetuando o clique em 'Offline Resolve'...")
+                        print("  -> Efetuando o clique no XPath 'Offline Resolve'...")
                         resolve_btn.click()
                         
                         # --------------------------------------------------
                         passo_atual = "Confirmação no botão Laranja do Pop-up"
                         # --------------------------------------------------
                         print("  -> Aguardando a janela de confirmação final (Pop-up laranja)...")
-                        seletor_botao_laranja = 'button:has-text("Confirm"):visible, button:has-text("Confirmar"):visible'
+                        
+                        # FILTRO REFORÇADO: Botão primário (laranja) + texto + visível
+                        seletor_botao_laranja = 'button.ssc-btn-type-primary:has-text("Confirm"):visible, button.ssc-btn-type-primary:has-text("Confirmar"):visible'
                         orange_confirm_btn = page.locator(seletor_botao_laranja).first
                         
                         try:
-                            # Tenta aguardar o popup abrir
-                            orange_confirm_btn.wait_for(state="visible", timeout=4000)
+                            orange_confirm_btn.wait_for(state="visible", timeout=5000)
                         except:
-                            # LÓGICA DE RECUO (RETRY): Se o pop-up não abriu, força o clique no botão novamente
-                            print("  -> [AVISO] O pop-up não abriu de primeira. Forçando um segundo clique em 'Offline Resolve'...")
+                            print("  -> [AVISO] O pop-up não abriu de primeira. Forçando um segundo clique no XPath...")
                             resolve_btn.click(force=True)
                             orange_confirm_btn.wait_for(state="visible", timeout=6000)
                         
